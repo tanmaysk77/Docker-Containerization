@@ -1,0 +1,101 @@
+services:
+  accountsdb:                                                                                       # This will pull image in docker hub and create a container for us
+    container_name: accountsdb
+    ports:
+      - 3316:3306                                                                                   # container will run mysql in its environment in 3306 and expose it to user on 33316
+    environment:                                                                                  # this will be consmed by my docker contianer of accounts application right
+      MYSQL_DATABASE: accountsdb
+    extends:
+      file: common-config.yml
+      service: microservice-db-config
+
+  loansdb:
+    container_name: loansdb
+    ports:
+      - 3317:3306
+    environment:
+      MYSQL_DATABASE: loansdb
+    extends:
+      file: common-config.yml
+      service: microservice-db-config
+
+  cardsdb:
+    container_name: cardsdb
+    ports:
+      - 3318:3306
+    environment:
+      MYSQL_DATABASE: cardsdb
+    extends:
+      file: common-config.yml
+      service: microservice-db-config
+
+  configserver:
+    image: "eazybytes/configserver:s7"
+    container_name: configserver-ms
+    ports:
+      - "8071:8071"
+    healthcheck:
+      test: "curl --fail --silent localhost:8071/actuator/health/readiness | grep UP || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    extends:
+      file: common-config.yml
+      service: microservice-base-config
+      # this we have used here to run accounts as a docker compos up
+
+  accounts:                                                                                                           #name used for service discovery and networking within the Docker Compose setup it is not matching with any name in project
+    image: "eazybytes/accounts:s7"                                                                     # this defines which image to use and this should match with image created through pom.xml file
+    container_name: accounts-ms                                                                         # container name that we want to give
+    ports:
+      - "8080:8080"                                                                                               # The ports section in your docker-compose.yml file maps a port on the host machine to a port on the container and port in yml will tell the accounts is listening on this port
+    environment:
+      SPRING_APPLICATION_NAME: "accounts"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://accountsdb:3306/accountsdb"            # This will overide what we have defined in yml file so the reason of using this hear so we handle it externally for this container it is not mandoatory at all as default in yml is already present
+    depends_on:
+      accountsdb:
+        condition: service_healthy
+      configserver:
+        condition: service_healthy
+    extends:
+      file: common-config.yml
+      service: microservice-configserver-config
+
+  loans:
+    image: "eazybytes/loans:s7"
+    container_name: loans-ms
+    ports:
+      - "8090:8090"
+    environment:
+      SPRING_APPLICATION_NAME: "loans"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://loansdb:3306/loansdb"
+    depends_on:
+      loansdb:
+        condition: service_healthy
+      configserver:
+        condition: service_healthy
+    extends:
+      file: common-config.yml
+      service: microservice-configserver-config
+
+  cards:
+    image: "eazybytes/cards:s7"
+    container_name: cards-ms
+    ports:
+      - "9000:9000"
+    environment:
+      SPRING_APPLICATION_NAME: "cards"
+      SPRING_DATASOURCE_URL: "jdbc:mysql://cardsdb:3306/cardsdb"
+    depends_on:
+      cardsdb:
+        condition: service_healthy
+      configserver:
+        condition: service_healthy
+    extends:
+      file: common-config.yml
+      service: microservice-configserver-config
+
+networks:
+  eazybank:
+    driver: "bridge"
